@@ -3,8 +3,7 @@ WORKDIR /app
 
 FROM base AS deps
 COPY package*.json ./
-COPY bun.lockb ./
-RUN bun install --frozen-lockfile
+RUN bun install
 
 FROM base AS runner
 COPY --from=deps /app/node_modules ./node_modules
