@@ -1,0 +1,91 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+generator prismabox {
+  provider                    = "prismabox"
+  output                      = "../generated/prismabox"
+  inputModel                  = "true"
+  typeboxImportDependencyName = "elysia"
+  typeboxImportVariableName   = "t"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model User {
+  id                 String             @id @default(uuid()) @db.Uuid
+  email              String             @unique
+  password_hash      String             @map("password_hash")
+  role               String             @default("staff")
+  full_name          String?            @map("full_name")
+  created_at         DateTime           @default(now()) @map("created_at")
+  updated_at         DateTime           @updatedAt @map("updated_at")
+  price_history      PriceHistory[]     @relation("PriceChangedBy")
+  products           Product[]          @relation("ProductCreatedBy")
+  stock_transactions StockTransaction[] @relation("TransactionCreatedBy")
+
+  @@map("users")
+}
+
+model Category {
+  id         String    @id @default(uuid()) @db.Uuid
+  name       String
+  created_at DateTime  @default(now()) @map("created_at")
+  products   Product[]
+
+  @@map("categories")
+}
+
+model Product {
+  id                 String             @id @default(uuid()) @db.Uuid
+  name               String
+  sku                String?
+  barcode            String?
+  category_id        String             @db.Uuid
+  current_stock      Int                @default(0)
+  min_stock          Int                @default(0)
+  sell_price         Decimal            @db.Decimal(10, 2)
+  buy_price          Decimal?           @db.Decimal(10, 2)
+  created_by         String             @db.Uuid
+  deleted_at         DateTime?          @map("deleted_at")
+  created_at         DateTime           @default(now()) @map("created_at")
+  updated_at         DateTime           @updatedAt @map("updated_at")
+  price_history      PriceHistory[]
+  category           Category           @relation(fields: [category_id], references: [id])
+  creator            User               @relation("ProductCreatedBy", fields: [created_by], references: [id])
+  stock_transactions StockTransaction[]
+
+  @@map("products")
+}
+
+model StockTransaction {
+  id            String   @id @default(uuid()) @db.Uuid
+  product_id    String   @db.Uuid
+  type          String
+  quantity      Int
+  stock_before  Int
+  stock_after   Int
+  price_at_time Decimal? @db.Decimal(10, 2)
+  note          String?
+  created_by    String   @db.Uuid
+  created_at    DateTime @default(now()) @map("created_at")
+  creator       User     @relation("TransactionCreatedBy", fields: [created_by], references: [id])
+  product       Product  @relation(fields: [product_id], references: [id])
+
+  @@map("stock_transactions")
+}
+
+model PriceHistory {
+  id         String   @id @default(uuid()) @db.Uuid
+  product_id String   @db.Uuid
+  old_price  Decimal  @db.Decimal(10, 2)
+  new_price  Decimal  @db.Decimal(10, 2)
+  changed_by String   @db.Uuid
+  changed_at DateTime @default(now()) @map("changed_at")
+  changer    User     @relation("PriceChangedBy", fields: [changed_by], references: [id])
+  product    Product  @relation(fields: [product_id], references: [id])
+
+  @@map("price_history")
+}

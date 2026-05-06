@@ -1,27 +1,38 @@
 import { Elysia } from 'elysia';
-import { supabase } from '../lib/supabase/client';
+import bcrypt from 'bcryptjs';
+import { prisma } from '../lib/prisma';
+import { createToken } from '../lib/auth';
 
 export const authRoutes = new Elysia({ prefix: '/auth' })
   .post('/login', async ({ body, set }) => {
     const { email, password } = body as { email: string; password: string };
-    const { data, error } = await supabase.auth.signInWithPassword({
-      email,
-      password,
-    });
 
-    console.log('Login attempt:', { email, error });
+    const user = await prisma.user.findUnique({ where: { email } });
 
-    if (error) {
+    if (!user) {
       set.status = 401;
       return { error: 'Email atau password salah' };
     }
-    return { user: data.user };
-  })
-  .post('/logout', async ({ set }) => {
-    const { error } = await supabase.auth.signOut();
-    if (error) {
-      set.status = 400;
-      return { error: error.message };
+
+    const isValidPassword = await bcrypt.compare(password, user.password_hash);
+
+    if (!isValidPassword) {
+      set.status = 401;
+      return { error: 'Email atau password salah' };
     }
+
+    const token = createToken(user);
+
+    return {
+      access_token: token,
+      user: {
+        id: user.id,
+        email: user.email,
+        role: user.role,
+        full_name: user.full_name,
+      },
+    };
+  })
+  .post('/logout', async () => {
     return { success: true };
   });

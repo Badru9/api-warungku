@@ -1,51 +1,36 @@
-import { Elysia } from "elysia";
-import { createClient } from "@supabase/supabase-js";
-import { supabase } from "../lib/supabase/client";
+import { Elysia } from 'elysia';
+import bcrypt from 'bcryptjs';
+import { prisma } from '../lib/prisma';
+import { requireOwner } from '../lib/auth';
 
-// Admin client for creating users
-const supabaseAdmin = createClient(
-  process.env.SUPABASE_URL || "",
-  process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_ANON_KEY || ""
-);
+export const staffRoutes = new Elysia({ prefix: '/staff' })
+  .get('/', async ({ request, set }) => {
+    const user = await requireOwner(set, request.headers.get('authorization'));
+    if (!user) return; // requireOwner sets the error response
 
-async function requireOwner(set: any) {
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) {
-    set.status = 401;
-    return null;
-  }
-  const { data: profile } = await supabase
-    .from("profiles")
-    .select("role")
-    .eq("id", user.id)
-    .single();
-  if (profile?.role !== "owner") {
-    set.status = 403;
-    return null;
-  }
-  return user;
-}
+    try {
+      const staff = await prisma.user.findMany({
+        where: { role: 'staff' },
+        select: {
+          id: true,
+          email: true,
+          full_name: true,
+          role: true,
+          created_at: true,
+          // exclude password_hash
+        },
+        orderBy: { created_at: 'desc' },
+      });
 
-export const staffRoutes = new Elysia({ prefix: "/staff" })
-  .get("/", async ({ set }) => {
-    const user = await requireOwner(set);
-    if (!user) return { error: "Forbidden" };
-
-    const { data, error } = await supabase
-      .from("profiles")
-      .select("*")
-      .eq("role", "staff")
-      .order("created_at", { ascending: false });
-
-    if (error) {
+      return staff;
+    } catch (error: any) {
       set.status = 500;
       return { error: error.message };
     }
-    return data;
   })
-  .post("/", async ({ body, set }) => {
-    const user = await requireOwner(set);
-    if (!user) return { error: "Forbidden" };
+  .post('/', async ({ request, body, set }) => {
+    const user = await requireOwner(set, request.headers.get('authorization'));
+    if (!user) return;
 
     const { email, password, full_name } = body as {
       email: string;
@@ -53,27 +38,34 @@ export const staffRoutes = new Elysia({ prefix: "/staff" })
       full_name: string;
     };
 
-    const { data: authData, error: authError } = await supabaseAdmin.auth.admin.createUser({
-      email,
-      password,
-      email_confirm: true,
-      user_metadata: { full_name, role: "staff" },
-    });
+    try {
+      const existingUser = await prisma.user.findUnique({ where: { email } });
+      if (existingUser) {
+        set.status = 400;
+        return { error: 'Email already in use' };
+      }
 
-    if (authError) {
+      const password_hash = await bcrypt.hash(password, 10);
+
+      const newStaff = await prisma.user.create({
+        data: {
+          email,
+          password_hash,
+          full_name,
+          role: 'staff',
+        },
+        select: {
+          id: true,
+          email: true,
+          full_name: true,
+          role: true,
+          created_at: true,
+        },
+      });
+
+      return { success: true, user: newStaff };
+    } catch (error: any) {
       set.status = 500;
-      return { error: authError.message };
+      return { error: error.message };
     }
-
-    const { error: profileError } = await supabaseAdmin
-      .from("profiles")
-      .update({ role: "staff", full_name })
-      .eq("id", authData.user.id);
-
-    if (profileError) {
-      set.status = 500;
-      return { error: profileError.message };
-    }
-
-    return { success: true, user: authData.user };
   });

@@ -1,54 +1,87 @@
-import { Elysia } from "elysia";
-import { supabase } from "../lib/supabase/client";
+import { Elysia } from 'elysia';
+import { prisma } from '../lib/prisma';
+import { getAuthUser } from '../lib/auth';
 
-export const dashboardRoutes = new Elysia({ prefix: "/dashboard" })
-  .get("/summary", async ({ set }) => {
-    const { count: totalProducts } = await supabase
-      .from("products")
-      .select("*", { count: "exact", head: true })
-      .is("deleted_at", null);
+export const dashboardRoutes = new Elysia({ prefix: '/dashboard' })
+  .get('/summary', async ({ request, set }) => {
+    const user = await getAuthUser(request.headers.get('authorization'));
+    if (!user) {
+      set.status = 401;
+      return { error: 'Unauthorized' };
+    }
 
-    const { data: products } = await supabase
-      .from("products")
-      .select("current_stock, min_stock")
-      .is("deleted_at", null);
+    try {
+      const totalProducts = await prisma.product.count({
+        where: { deleted_at: null },
+      });
 
-    const lowStock = products?.filter((p) => p.current_stock <= p.min_stock).length || 0;
+      const products = await prisma.product.findMany({
+        where: { deleted_at: null },
+        select: { current_stock: true, min_stock: true },
+      });
 
-    const startOfDay = new Date();
-    startOfDay.setHours(0, 0, 0, 0);
+      const lowStock = products.filter(
+        (p) => p.current_stock <= p.min_stock,
+      ).length;
 
-    const { count: transactionsToday } = await supabase
-      .from("stock_transactions")
-      .select("*", { count: "exact", head: true })
-      .gte("created_at", startOfDay.toISOString());
+      const startOfDay = new Date();
+      startOfDay.setHours(0, 0, 0, 0);
 
-    return {
-      totalProducts: totalProducts || 0,
-      lowStock,
-      transactionsToday: transactionsToday || 0,
-    };
+      const transactionsToday = await prisma.stockTransaction.count({
+        where: {
+          created_at: {
+            gte: startOfDay,
+          },
+        },
+      });
+
+      return {
+        totalProducts,
+        lowStock,
+        transactionsToday,
+      };
+    } catch (error: any) {
+      set.status = 500;
+      return { error: error.message };
+    }
   })
-  .get("/chart", async ({ request, set }) => {
+  .get('/chart', async ({ request, set }) => {
+    const user = await getAuthUser(request.headers.get('authorization'));
+    if (!user) {
+      set.status = 401;
+      return { error: 'Unauthorized' };
+    }
+
     const { searchParams } = new URL(request.url);
-    const period = searchParams.get("period") || "weekly";
+    const period = searchParams.get('period') || 'weekly';
 
     const startDate = new Date();
-    if (period === "weekly") {
+    if (period === 'weekly') {
       startDate.setDate(startDate.getDate() - 7);
     } else {
       startDate.setMonth(startDate.getMonth() - 1);
     }
 
-    const { data, error } = await supabase
-      .from("stock_transactions")
-      .select("type, quantity, created_at")
-      .gte("created_at", startDate.toISOString())
-      .order("created_at", { ascending: true });
+    try {
+      const data = await prisma.stockTransaction.findMany({
+        where: {
+          created_at: {
+            gte: startDate,
+          },
+        },
+        select: {
+          type: true,
+          quantity: true,
+          created_at: true,
+        },
+        orderBy: {
+          created_at: 'asc',
+        },
+      });
 
-    if (error) {
+      return data;
+    } catch (error: any) {
       set.status = 500;
       return { error: error.message };
     }
-    return data || [];
   });

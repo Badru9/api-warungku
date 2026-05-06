@@ -4,7 +4,20 @@
       "Bash(bun create:*)",
       "Bash(bun add:*)",
       "Bash(bun run src/index.ts)",
-      "Bash(bun x tsc:*)"
+      "Bash(bun x tsc:*)",
+      "Skill(supabase)",
+      "Bash(bunx prisma init)",
+      "Bash(bun dev)",
+      "Bash(bunx prisma migrate dev:*)",
+      "Bash(bun remove:*)",
+      "Bash(bunx tsc:*)",
+      "Bash(bunx prisma:*)",
+      "Skill(superpowers:using-superpowers)",
+      "Skill(superpowers:brainstorming)",
+      "Bash(bun run seed)",
+      "Skill(superpowers:systematic-debugging)",
+      "Bash(bun run dev)",
+      "Bash(git add:*)"
     ]
   }
 }
